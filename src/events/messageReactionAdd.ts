@@ -1,6 +1,7 @@
 // messageReactionAdd.ts
-import { Guild, GuildMember, MessageReaction, Role, TextChannel, User } from 'discord.js';
+import { Guild, GuildChannel, GuildMember, MessageReaction, Role, TextChannel, User } from 'discord.js';
 import { CommandoClient } from 'discord.js-commando';
+import { createImportSpecifier } from 'typescript';
 import { reactEmotes, reactMessages } from '../info/server/reactionroles';
 
 
@@ -8,11 +9,9 @@ export default async (client: CommandoClient, reaction: MessageReaction): Promis
     // ignore reactions from itself
     if (reaction.me) return;
 
-    const message = reaction.message;
-
     // reaction role add/remove
     // if a valid emote is used on a valid message, get the role it corresponds to
-    if (reactMessages.some(reactMessage => reactMessage.id === message.id)) {
+    if (reactMessages.some(reactMessage => reactMessage.id === reaction.message.id)) {
         const roleID = getRoleID();
         if (roleID !== '') {
             const role = (reaction.message.guild as Guild).roles.cache.get(roleID) as Role;
@@ -41,16 +40,13 @@ export default async (client: CommandoClient, reaction: MessageReaction): Promis
         }
         else {
             // remove invalid reactions from each message
-            reactEmotes.forEach(emote => {
-                if (reaction.emoji.id !== emote.id) {
-                    const guildChannel = client.channels.cache.get(emote.message!.channel!.id) as TextChannel;
-                    guildChannel.messages.fetch(emote.message!.id)
-                        .then(guildMessage => guildMessage.reactions.cache.get(reaction.emoji.id!)!.remove());
-                }
-            });
+            Promise.resolve(client.channels.cache.get(reaction.message.channel.id) as TextChannel)
+                .then(channel => channel.messages.fetch(reaction.message.id)
+                    .then(guildMessage => {
+                        guildMessage.reactions.cache.get(reaction.emoji.id as string)?.remove()
+                            .catch(error => console.log('Failed to remove reactios: ', error));
+                    }));
         }
-
-
     }
 
 
@@ -58,11 +54,13 @@ export default async (client: CommandoClient, reaction: MessageReaction): Promis
         // check if the message ID matches any valid message ID for reaction roles
         // if the emote name is matched, return the role id
         // else return an empty string
-        reactEmotes.forEach(emote => {
-            if (reaction.emoji.id === emote.id) {
-                return emote.roleID;
-            }
-        });
-        return '';
+        const emote = reactEmotes.filter(emote => (reaction.emoji.id === emote.id) ? true : false)[0];
+
+        if (emote) {
+            return emote.roleID!;
+        }
+        else {
+            return '';
+        }
     }
 };
